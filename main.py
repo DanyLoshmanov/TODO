@@ -7,8 +7,7 @@ def load_tasks():
         with open(FILE_TASKS, "r", encoding='utf-8') as file:
             return json.load(file)
     else:
-        raise FileNotFoundError("Файл не найден!")
-    return []
+        return []
 
 def save_tasks(tasks):
     with open(FILE_TASKS, "w", encoding='utf-8') as file:
@@ -30,3 +29,18 @@ def toggle_task(idx):
         print(f"Статус задачи '{tasks[idx]["Задача: "]}' изменен на на {tasks[idx]["Статус: "]}")
     else:
         print("Нет задач с таким номером!")
+        
+def delete_task(idx):
+    tasks = load_tasks()
+    if 0 <= idx < len(tasks):
+        removed_tasks = tasks.pop(idx)
+        print(f"Задача '{removed_tasks['Задача: ']}' удалена.")
+    else:
+        print("Нет задач с таким номером.")
+        
+def view_tasks():
+    tasks = load_tasks()
+    if not tasks:
+        print("Список задач пуст!")
+    for i, task in enumerate(tasks):
+        print(f"{i}. {task['Задача: ']} — {task['Статус']}")
