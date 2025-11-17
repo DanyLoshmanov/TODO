@@ -18,9 +18,9 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Файл с задачами (если генерируется программой)
-todo_data.json
-tasks.json
+# # Файл с задачами (если генерируется программой)
+# todo_data.json
+# tasks.json
 
 # Тестовые данные
 *.tmp
