@@ -1,0 +1,26 @@
+# Виртуальное окружение
+venv/
+.env/
+.venv/
+
+# Кэш Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Логи
+*.log
+
+# Настройки ОС/редакторов
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Файл с задачами (если генерируется программой)
+todo_data.json
+tasks.json
+
+# Тестовые данные
+*.tmp
