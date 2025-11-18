@@ -1,13 +1,18 @@
 import json, os
 
-FILE_TASKS = "tasks.json"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FILE_TASKS = os.path.join(SCRIPT_DIR, "tasks.json")
 
 def load_tasks():
-    if os.path.exists(FILE_TASKS):
-        with open(FILE_TASKS, "r", encoding='utf-8') as file:
-            return json.load(file)
-    else:
+    if not os.path.exists(FILE_TASKS):
         return []
+    
+    try:
+        with open(FILE_TASKS, "r", encoding='utf-8') as file:
+            return json.load(file)                    
+    except:                                               
+        print("Файл tasks.json повреждён или пустой — создаём новый список задач.")
+        return []                                          
 
 def save_tasks(tasks):
     with open(FILE_TASKS, "w", encoding='utf-8') as file:
@@ -20,21 +25,24 @@ def add_task(title):
     
 def toggle_task(idx):
     tasks = load_tasks()
-    if 0 <= idx < len(tasks):
-        if tasks[idx]["Статус"] == "Не выполнено":
-            tasks[idx]["Статус"] = "Выполнено"
+    
+    real_idx = idx - 1
+    if 0 <= real_idx < len(tasks):
+        if tasks[real_idx]["Статус"] == "Не выполнено":
+            tasks[real_idx]["Статус"] = "Выполнено"
         else:
-            tasks[idx]["Статус"] = "Не выполнено"
+            tasks[real_idx]["Статус"] = "Не выполнено"
         save_tasks(tasks)
-        print(f"Статус задачи '{tasks[idx]['Задача: ']}' изменен на {tasks[idx]['Статус']}")
-
+        print(f"Статус задачи '{tasks[real_idx]['Задача: ']}' изменён на {tasks[real_idx]['Статус']}")
     else:
         print("Нет задач с таким номером!")
         
 def delete_task(idx):
     tasks = load_tasks()
-    if 0 <= idx < len(tasks):
-        removed_tasks = tasks.pop(idx)
+    real_idx = idx - 1
+    if 0 <= real_idx < len(tasks):
+        removed_tasks = tasks.pop(real_idx)
+        save_tasks(tasks)
         print(f"Задача '{removed_tasks['Задача: ']}' удалена.")
     else:
         print("Нет задач с таким номером.")
@@ -43,8 +51,9 @@ def view_tasks():
     tasks = load_tasks()
     if not tasks:
         print("Список задач пуст!")
-    for i, task in enumerate(tasks):
-        print(f"{i}. {task['Задача: ']} — {task['Статус']}")
+    else:
+        for i, task in enumerate(tasks):
+            print(f"{i}. {task['Задача: ']} — {task['Статус']}")
         
 def main():
     while True:
@@ -61,13 +70,16 @@ def main():
             view_tasks()
         elif choice == "2":
             title = input("Введите название задачи: ")
-            add_task(title)
-            print(f"Задача {title} успешно добавлена!")
+            if title.strip():
+                add_task(title)
+                print(f"Задача {title} успешно добавлена!")
+            else:
+                print("Задача не может быть пустой!")
         elif choice == "3":
             view_tasks()
             idx = input("Введите номер задачи для изменения статуса: ")
             try:
-                toggle_task(int(idx)) # Проверка - что напечатано ТОЛЬКО число
+                toggle_task(int(idx)) 
             except ValueError:
                 print("Нужно ввести число!")
         elif choice == "4":
