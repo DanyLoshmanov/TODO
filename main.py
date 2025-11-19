@@ -40,7 +40,7 @@ class TaskRepository:
         try:
             with open(self.file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except json.JSONDecodeError:
+       
             print("Файл задач повреждён. Начинаем с пустого списка.")
             return []
 
