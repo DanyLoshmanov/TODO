@@ -1,7 +1,6 @@
 import json
 import os
 
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_TASKS = os.path.join(SCRIPT_DIR, "tasks.json")
 
@@ -9,134 +8,152 @@ STATUS_DONE = "Выполнено"
 STATUS_PENDING = "Не выполнено"
 
 
-def load_tasks():
-    """
-    Загружает список задач из файла tasks.json.
-    Возвращает пустой список, если файл отсутствует или поврежден.
-    """
-    if not os.path.exists(FILE_TASKS):
-        return []
+class Task:
+    """Одна задача"""
+    def __init__(self, title, status=STATUS_PENDING):
+        self.title = title.strip()
+        self.status = status
 
-    try:
-        with open(FILE_TASKS, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except (json.JSONDecodeError, FileNotFoundError):
-        print("Файл tasks.json повреждён или пустой. Создан новый список задач.")
-        return []
+    def toggle(self):
+        """Меняет статус на противоположный"""
+        self.status = STATUS_DONE if self.status == STATUS_PENDING else STATUS_PENDING
 
+    def to_dict(self):
+        return {"title": self.title, "status": self.status}
 
-def save_tasks(tasks):
-    """
-    Сохраняет список задач в файл tasks.json.
-    """
-    with open(FILE_TASKS, "w", encoding="utf-8") as file:
-        json.dump(tasks, file, indent=4, ensure_ascii=False)
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["title"], data.get("status", STATUS_PENDING))
+
+    def __str__(self):
+        return f"{self.title} — {self.status}"
 
 
-def add_task(title):
-    """
-    Добавляет новую задачу в список.
-    """
-    tasks = load_tasks()
-    tasks.append({
-        "title": title,
-        "status": STATUS_PENDING
-    })
-    save_tasks(tasks)
+class TaskRepository:
+    """Работа только с файлом tasks.json"""
+    def __init__(self, file_path=FILE_TASKS):
+        self.file_path = file_path
+
+    def _load(self):
+        if not os.path.exists(self.file_path):
+            return []
+        try:
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("Файл задач повреждён. Начинаем с пустого списка.")
+            return []
+
+    def _save(self, tasks_data):
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump(tasks_data, f, indent=4, ensure_ascii=False)
+
+    def get_all(self):
+        raw = self._load()
+        return [Task.from_dict(task) for task in raw]
+
+    def save_all(self, tasks):
+        data = [task.to_dict() for task in tasks]
+        self._save(data)
 
 
-def toggle_task(index):
-    """
-    Переключает статус задачи по индексу (1-based).
-    """
-    tasks = load_tasks()
-    real_index = index - 1
+class TodoApp:
+    """Вся логика приложения"""
+    def __init__(self):
+        self.repo = TaskRepository()
+        self.tasks = self.repo.get_all()
 
-    if 0 <= real_index < len(tasks):
-        task = tasks[real_index]
-        task["status"] = STATUS_DONE if task["status"] == STATUS_PENDING else STATUS_PENDING
-        save_tasks(tasks)
-        print(f"Статус задачи '{task['title']}' изменён на {task['status']}.")
-    else:
-        print("Нет задачи с таким номером.")
+    def add_task(self, title):
+        if not title.strip():
+            print("Название задачи не может быть пустым.")
+            return
+        self.tasks.append(Task(title))
+        self._save()
+        print("Задача успешно добавлена.")
 
+    def toggle_task(self, index):  # index — 0-based
+        if 0 <= index < len(self.tasks):
+            self.tasks[index].toggle()
+            self._save()
+            print(f"Статус изменён на {self.tasks[index].status}.")
+        else:
+            print("Нет задачи с таким номером.")
 
-def delete_task(index):
-    """
-    Удаляет задачу по индексу (1-based).
-    """
-    tasks = load_tasks()
-    real_index = index - 1
+    def delete_task(self, index):  # index — 0-based
+        if 0 <= index < len(self.tasks):
+            removed = self.tasks.pop(index)
+            self._save()
+            print(f"Задача «{removed.title}» удалена.")
+        else:
+            print("Нет задачи с таким номером.")
 
-    if 0 <= real_index < len(tasks):
-        removed = tasks.pop(real_index)
-        save_tasks(tasks)
-        print(f"Задача '{removed['title']}' удалена.")
-    else:
-        print("Нет задачи с таким номером.")
+    def view_tasks(self):
+        if not self.tasks:
+            print("Список задач пуст.")
+            return
+        for i, task in enumerate(self.tasks, 1):
+            print(f"{i}. {task}")
 
-
-def view_tasks():
-    """
-    Выводит список всех задач.
-    """
-    tasks = load_tasks()
-
-    if not tasks:
-        print("Список задач пуст.")
-        return
-
-    for i, task in enumerate(tasks, start=1):
-        print(f"{i}. {task['title']} — {task['status']}")
+    def _save(self):
+        self.repo.save_all(self.tasks)
 
 
-def main():
-    """
-    Точка входа в программу.
-    """
-    while True:
-        print("\n--- To-Do List ---")
+class ConsoleUI:
+    """Интерфейс в консоли"""
+    def __init__(self, app):
+        self.app = app
+
+    def run(self):
+        while True:
+            self._show_menu()
+            choice = input("Выберите действие (1–5): ").strip()
+
+            if choice == "1":
+                self.app.view_tasks()
+
+            elif choice == "2":
+                title = input("Введите название задачи: ").strip()
+                self.app.add_task(title)
+
+            elif choice == "3":
+                self.app.view_tasks()
+                idx = input("Введите номер задачи: ").strip()
+                if idx.isdigit():
+                    self.app.toggle_task(int(idx) - 1)
+                else:
+                    print("Нужно ввести число.")
+
+            elif choice == "4":
+                self.app.view_tasks()
+                idx = input("Введите номер задачи: ").strip()
+                if idx.isdigit():
+                    self.app.delete_task(int(idx) - 1)
+                else:
+                    print("Нужно ввести число.")
+
+            elif choice == "5":
+                print("До свидания!")
+                break
+
+            else:
+                print("Некорректный выбор.")
+
+    @staticmethod
+    def _show_menu():
+        print("\n" + "=" * 30)
+        print("   To-Do List")
+        print("=" * 30)
         print("1. Показать задачи")
         print("2. Добавить задачу")
         print("3. Изменить статус задачи")
         print("4. Удалить задачу")
         print("5. Выход")
 
-        choice = input("Выберите действие (1–5): ")
 
-        if choice == "1":
-            view_tasks()
-
-        elif choice == "2":
-            title = input("Введите название задачи: ").strip()
-            if title:
-                add_task(title)
-                print("Задача успешно добавлена.")
-            else:
-                print("Название задачи не может быть пустым.")
-
-        elif choice == "3":
-            view_tasks()
-            idx = input("Введите номер задачи: ")
-            if idx.isdigit():
-                toggle_task(int(idx))
-            else:
-                print("Нужно ввести число.")
-
-        elif choice == "4":
-            view_tasks()
-            idx = input("Введите номер задачи: ")
-            if idx.isdigit():
-                delete_task(int(idx))
-            else:
-                print("Нужно ввести число.")
-
-        elif choice == "5":
-            print("Выход из программы...")
-            break
-
-        else:
-            print("Некорректный выбор действия.")
+def main():
+    app = TodoApp()
+    ui = ConsoleUI(app)
+    ui.run()
 
 
 if __name__ == "__main__":
