@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_TASKS = os.path.join(SCRIPT_DIR, "tasks.json")
@@ -7,30 +8,53 @@ FILE_TASKS = os.path.join(SCRIPT_DIR, "tasks.json")
 STATUS_DONE = "Выполнено"
 STATUS_PENDING = "Не выполнено"
 
+# Формат даты и времени — красивый и читаемый
+DT_FORMAT = "%d.%m.%Y %H:%M"  # например: 22.11.2025 14:37
+
 
 class Task:
-    """Одна задача"""
-    def __init__(self, title, status=STATUS_PENDING):
+    """Одна задача с датой создания и завершения"""
+    def __init__(self, title, status=STATUS_PENDING, created_at=None, completed_at=None):
         self.title = title.strip()
         self.status = status
+        self.created_at = created_at or datetime.now().strftime(DT_FORMAT)
+        self.completed_at = completed_at
 
     def toggle(self):
-        """Меняет статус на противоположный"""
         self.status = STATUS_DONE if self.status == STATUS_PENDING else STATUS_PENDING
+        if self.status == STATUS_DONE and self.completed_at is None:
+            self.completed_at = datetime.now().strftime(DT_FORMAT)
+        elif self.status == STATUS_PENDING:
+            self.completed_at = None  # Сбрасываем дату завершения, если снова "в работе"
 
     def to_dict(self):
-        return {"title": self.title, "status": self.status}
+        return {
+            "title": self.title,
+            "status": self.status,
+            "created_at": self.created_at,
+            "completed_at": self.completed_at
+        }
 
     @classmethod
     def from_dict(cls, data):
-        return cls(data["title"], data.get("status", STATUS_PENDING))
+        return cls(
+            title=data["title"],
+            status=data.get("status", STATUS_PENDING),
+            created_at=data.get("created_at"),
+            completed_at=data.get("completed_at")
+        )
 
     def __str__(self):
-        return f"{self.title} — {self.status}"
+        base = f"{self.title} — {self.status}"
+        info = f" (создана: {self.created_at}"
+        if self.completed_at:
+            info += f", завершена: {self.completed_at})"
+        else:
+            info += ")"
+        return base + info
 
 
 class TaskRepository:
-    """Работа только с файлом tasks.json"""
     def __init__(self, file_path=FILE_TASKS):
         self.file_path = file_path
 
@@ -58,7 +82,6 @@ class TaskRepository:
 
 
 class TodoApp:
-    """Вся логика приложения"""
     def __init__(self):
         self.repo = TaskRepository()
         self.tasks = self.repo.get_all()
@@ -69,17 +92,20 @@ class TodoApp:
             return
         self.tasks.append(Task(title))
         self._save()
-        print("Задача успешно добавлена.")
+        print(f"Задача добавлена {datetime.now().strftime(DT_FORMAT)}")
 
-    def toggle_task(self, index):  # index — 0-based
+    def toggle_task(self, index):
         if 0 <= index < len(self.tasks):
+            old_status = self.tasks[index].status
             self.tasks[index].toggle()
             self._save()
-            print(f"Статус изменён на {self.tasks[index].status}.")
+            new_status = self.tasks[index].status
+            action = "завершена" if new_status == STATUS_DONE else "возобновлена"
+            print(f"Задача {action} → {new_status}")
         else:
             print("Нет задачи с таким номером.")
 
-    def delete_task(self, index):  # index — 0-based
+    def delete_task(self, index):
         if 0 <= index < len(self.tasks):
             removed = self.tasks.pop(index)
             self._save()
@@ -91,6 +117,7 @@ class TodoApp:
         if not self.tasks:
             print("Список задач пуст.")
             return
+        print("\nВаши задачи:")
         for i, task in enumerate(self.tasks, 1):
             print(f"{i}. {task}")
 
@@ -99,14 +126,14 @@ class TodoApp:
 
 
 class ConsoleUI:
-    """Интерфейс в консоли"""
     def __init__(self, app):
         self.app = app
 
     def run(self):
+        print(f"Запущено: {datetime.now().strftime(DT_FORMAT)}")
         while True:
             self._show_menu()
-            choice = input("Выберите действие (1–5): ").strip()
+            choice = input("\nВыберите действие (1–5): ").strip()
 
             if choice == "1":
                 self.app.view_tasks()
@@ -117,37 +144,43 @@ class ConsoleUI:
 
             elif choice == "3":
                 self.app.view_tasks()
-                idx = input("Введите номер задачи: ").strip()
-                if idx.isdigit():
-                    self.app.toggle_task(int(idx) - 1)
-                else:
-                    print("Нужно ввести число.")
+                if self.app.tasks:
+                    idx = input("Номер задачи для изменения статуса: ").strip()
+                    if idx.isdigit():
+                        self.app.toggle_task(int(idx) - 1)
+                    else:
+                        print("Нужно ввести число.")
 
             elif choice == "4":
                 self.app.view_tasks()
-                idx = input("Введите номер задачи: ").strip()
-                if idx.isdigit():
-                    self.app.delete_task(int(idx) - 1)
-                else:
-                    print("Нужно ввести число.")
+                if self.app.tasks:
+                    idx = input("Номер задачи для удаления: ").strip()
+                    if idx.isdigit():
+                        self.app.delete_task(int(idx) - 1)
+                    else:
+                        print("Нужно ввести число.")
 
             elif choice == "5":
-                print("До свидания!")
+                print(f"До свидания! Закрыто: {datetime.now().strftime(DT_FORMAT)}")
                 break
 
             else:
-                print("Некорректный выбор.")
+                print("Пожалуйста, выберите от 1 до 5.")
+
+            input("\nНажмите Enter для продолжения...")
+            os.system('cls' if os.name == 'nt' else 'clear')  # Очистка экрана (Windows/Linux/Mac)
 
     @staticmethod
     def _show_menu():
-        print("\n" + "=" * 30)
-        print("   To-Do List")
-        print("=" * 30)
-        print("1. Показать задачи")
-        print("2. Добавить задачу")
-        print("3. Изменить статус задачи")
+        print("\n" + "=" * 50)
+        print("   КРАСИВЫЙ TO-DO LIST С ДАТАМИ И ВРЕМЕНЕМ")
+        print("=" * 50)
+        print("1. Показать все задачи")
+        print("2. Добавить новую задачу")
+        print("3. Отметить задачу (выполнено / в работе)")
         print("4. Удалить задачу")
         print("5. Выход")
+        print("=" * 50)
 
 
 def main():
@@ -157,4 +190,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() # Запуск
+    main()
