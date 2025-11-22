@@ -1,3 +1,4 @@
+# todo.py
 import json
 import os
 from datetime import datetime
@@ -5,32 +6,53 @@ from datetime import datetime
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FILE_TASKS = os.path.join(SCRIPT_DIR, "tasks.json")
 
+# Статусы
 STATUS_DONE = "Выполнено"
 STATUS_PENDING = "Не выполнено"
 
-# Формат даты и времени — красивый и читаемый
-DT_FORMAT = "%d.%m.%Y %H:%M"  # например: 22.11.2025 14:37
+# Приоритеты
+PRIORITY_HIGH = 1
+PRIORITY_MEDIUM = 2
+PRIORITY_LOW = 3
+
+PRIORITY_NAMES = {
+    PRIORITY_HIGH: "Высокий",
+    PRIORITY_MEDIUM: "Средний",
+    PRIORITY_LOW: "Низкий"
+}
+
+PRIORITY_EMOJI = {
+    PRIORITY_HIGH: "High priority",
+    PRIORITY_MEDIUM: "Medium priority",
+    PRIORITY_LOW: "Low priority"
+}
+
+DT_FORMAT = "%d.%m.%Y %H:%M"
 
 
 class Task:
-    """Одна задача с датой создания и завершения"""
-    def __init__(self, title, status=STATUS_PENDING, created_at=None, completed_at=None):
+    def __init__(self, title, status=STATUS_PENDING, priority=PRIORITY_MEDIUM,
+                 created_at=None, completed_at=None):
         self.title = title.strip()
         self.status = status
+        self.priority = priority
         self.created_at = created_at or datetime.now().strftime(DT_FORMAT)
         self.completed_at = completed_at
 
     def toggle(self):
-        self.status = STATUS_DONE if self.status == STATUS_PENDING else STATUS_PENDING
-        if self.status == STATUS_DONE and self.completed_at is None:
-            self.completed_at = datetime.now().strftime(DT_FORMAT)
-        elif self.status == STATUS_PENDING:
-            self.completed_at = None  # Сбрасываем дату завершения, если снова "в работе"
+        if self.status == STATUS_PENDING:
+            self.status = STATUS_DONE
+            if self.completed_at is None:
+                self.completed_at = datetime.now().strftime(DT_FORMAT)
+        else:
+            self.status = STATUS_PENDING
+            self.completed_at = None
 
     def to_dict(self):
         return {
             "title": self.title,
             "status": self.status,
+            "priority": self.priority,
             "created_at": self.created_at,
             "completed_at": self.completed_at
         }
@@ -40,12 +62,15 @@ class Task:
         return cls(
             title=data["title"],
             status=data.get("status", STATUS_PENDING),
+            priority=data.get("priority", PRIORITY_MEDIUM),
             created_at=data.get("created_at"),
             completed_at=data.get("completed_at")
         )
 
     def __str__(self):
-        base = f"{self.title} — {self.status}"
+        emoji = PRIORITY_EMOJI[self.priority]
+        prio = f"{emoji} {PRIORITY_NAMES[self.priority]}"
+        base = f"{self.title} — {self.status} [{prio}]"
         info = f" (создана: {self.created_at}"
         if self.completed_at:
             info += f", завершена: {self.completed_at})"
@@ -65,7 +90,7 @@ class TaskRepository:
             with open(self.file_path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except json.JSONDecodeError:
-            print("Файл задач повреждён. Начинаем с пустого списка.")
+            print("Ошибка чтения tasks.json. Создаём новый список.")
             return []
 
     def _save(self, tasks_data):
@@ -74,10 +99,10 @@ class TaskRepository:
 
     def get_all(self):
         raw = self._load()
-        return [Task.from_dict(task) for task in raw]
+        return [Task.from_dict(t) for t in raw]
 
     def save_all(self, tasks):
-        data = [task.to_dict() for task in tasks]
+        data = [t.to_dict() for t in tasks]
         self._save(data)
 
 
@@ -85,44 +110,49 @@ class TodoApp:
     def __init__(self):
         self.repo = TaskRepository()
         self.tasks = self.repo.get_all()
+        self._sort_tasks()
 
-    def add_task(self, title):
+    def _sort_tasks(self):
+        self.tasks.sort(key=lambda t: (t.priority, t.created_at))
+
+    def add_task(self, title, priority=PRIORITY_MEDIUM):
         if not title.strip():
-            print("Название задачи не может быть пустым.")
-            return
-        self.tasks.append(Task(title))
-        self._save()
-        print(f"Задача добавлена {datetime.now().strftime(DT_FORMAT)}")
+            print("Ошибка: название задачи не может быть пустым!")
+            return False
+        self.tasks.append(Task(title, priority=priority))
+        self._sort_tasks()
+        self.repo.save_all(self.tasks)
+        print(f"Задача добавлена → {PRIORITY_EMOJI[priority]} {PRIORITY_NAMES[priority]}")
+        return True
 
     def toggle_task(self, index):
         if 0 <= index < len(self.tasks):
             old_status = self.tasks[index].status
             self.tasks[index].toggle()
-            self._save()
-            new_status = self.tasks[index].status
-            action = "завершена" if new_status == STATUS_DONE else "возобновлена"
-            print(f"Задача {action} → {new_status}")
+            self._sort_tasks()
+            self.repo.save_all(self.tasks)
+            action = "завершена" if self.tasks[index].status == STATUS_DONE else "возобновлена"
+            print(f"Задача «{self.tasks[index].title}» {action}")
         else:
-            print("Нет задачи с таким номером.")
+            print("Задача с таким номером не найдена.")
 
     def delete_task(self, index):
         if 0 <= index < len(self.tasks):
             removed = self.tasks.pop(index)
-            self._save()
+            self.repo.save_all(self.tasks)
             print(f"Задача «{removed.title}» удалена.")
         else:
-            print("Нет задачи с таким номером.")
+            print("Задача с таким номером не найдена.")
 
     def view_tasks(self):
         if not self.tasks:
-            print("Список задач пуст.")
+            print("Список задач пуст. Добавьте первую задачу!")
             return
-        print("\nВаши задачи:")
+        print("\nВаши задачи (отсортированы по приоритету):")
+        print("─" * 90)
         for i, task in enumerate(self.tasks, 1):
-            print(f"{i}. {task}")
-
-    def _save(self):
-        self.repo.save_all(self.tasks)
+            print(f"{i:2}. {task}")
+        print("─" * 90)
 
 
 class ConsoleUI:
@@ -130,57 +160,85 @@ class ConsoleUI:
         self.app = app
 
     def run(self):
-        print(f"Запущено: {datetime.now().strftime(DT_FORMAT)}")
+        self.clear()
+        print(f"Запущено: {datetime.now().strftime(DT_FORMAT)}\n")
         while True:
-            self._show_menu()
-            choice = input("\nВыберите действие (1–5): ").strip()
+            self.show_menu()
+            choice = input("Выберите действие (1–5): ").strip()
 
             if choice == "1":
+                self.clear()
                 self.app.view_tasks()
 
             elif choice == "2":
-                title = input("Введите название задачи: ").strip()
-                self.app.add_task(title)
+                self.clear()
+                title = input("Название новой задачи:\n➤ ").strip()
+                if not title:
+                    print("Задача не добавлена — название пустое.")
+                    input("\nНажмите Enter...")
+                    continue
+
+                print("\nПриоритет:")
+                print(f"1. {PRIORITY_EMOJI[1]} Высокий (срочно)")
+                print(f"2. {PRIORITY_EMOJI[2]} Средний (по умолчанию)")
+                print(f"3. {PRIORITY_EMOJI[3]} Низкий")
+                prio = input("\nВыбор (1–3, Enter = 2): ").strip()
+
+                if prio == "1":
+                    priority = PRIORITY_HIGH
+                elif prio == "3":
+                    priority = PRIORITY_LOW
+                else:
+                    priority = PRIORITY_MEDIUM
+
+                self.app.add_task(title, priority)
 
             elif choice == "3":
+                self.clear()
                 self.app.view_tasks()
                 if self.app.tasks:
-                    idx = input("Номер задачи для изменения статуса: ").strip()
+                    idx = input("\nНомер задачи для изменения статуса: ").strip()
                     if idx.isdigit():
                         self.app.toggle_task(int(idx) - 1)
                     else:
-                        print("Нужно ввести число.")
+                        print("Введите корректный номер.")
 
             elif choice == "4":
+                self.clear()
                 self.app.view_tasks()
                 if self.app.tasks:
-                    idx = input("Номер задачи для удаления: ").strip()
+                    idx = input("\nНомер задачи для удаления: ").strip()
                     if idx.isdigit():
                         self.app.delete_task(int(idx) - 1)
                     else:
-                        print("Нужно ввести число.")
+                        print("Введите корректный номер.")
 
             elif choice == "5":
-                print(f"До свидания! Закрыто: {datetime.now().strftime(DT_FORMAT)}")
+                self.clear()
+                print(f"До свидания! Закрыто: {datetime.now().strftime(DT_FORMAT)}\n")
                 break
 
             else:
-                print("Пожалуйста, выберите от 1 до 5.")
+                print("Выберите число от 1 до 5.")
 
             input("\nНажмите Enter для продолжения...")
-            os.system('cls' if os.name == 'nt' else 'clear')  # Очистка экрана (Windows/Linux/Mac)
+            self.clear()
 
     @staticmethod
-    def _show_menu():
-        print("\n" + "=" * 50)
-        print("   КРАСИВЫЙ TO-DO LIST С ДАТАМИ И ВРЕМЕНЕМ")
-        print("=" * 50)
-        print("1. Показать все задачи")
-        print("2. Добавить новую задачу")
-        print("3. Отметить задачу (выполнено / в работе)")
+    def clear():
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    @staticmethod
+    def show_menu():
+        print("=" * 55)
+        print("   КОНСОЛЬНЫЙ TO-DO LIST С ПРИОРИТЕТАМИ")
+        print("=" * 55)
+        print("1. Показать задачи")
+        print("2. Добавить задачу")
+        print("3. Отметить задачу")
         print("4. Удалить задачу")
         print("5. Выход")
-        print("=" * 50)
+        print("=" * 55)
 
 
 def main():
